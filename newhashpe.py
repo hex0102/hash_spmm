@@ -1,26 +1,32 @@
 import numpy as np
 from utils import *
 DUMMY_ADDR = 0
-OUT_LIMIT = 8
+FACTOR = 16
+OUT_LIMIT = 8*FACTOR
+
+A_DATA_BUFFER_SIZE = 64*FACTOR
+A_PTR_BUFFER_SIZE = 8*FACTOR
 B_DATA_BUFFER_SIZE = 256
-B_PTR_BUFFER_SIZE = 32
-A_DATA_BUFFER_SIZE = 64
-A_PTR_BUFFER_SIZE = 8
+B_PTR_BUFFER_SIZE = 32*FACTOR
 
-PRINT_FREQ = 500
+CONCURRENT_C = 4
 
-class BasePE:
+PRINT_FREQ = 1
+
+class newHashPE:
     request_buffer = []
     
-    def __init__(self, id, assigned_row_ids, csr_m, csr_out, shared_complete_list, shared_status_table):
+    def __init__(self, id, npes,assigned_row_ids, csr_m, csr_out, shared_complete_list, shared_status_table):
         self.curr_data = None
         self.shared_complete_list = shared_complete_list
         self.id = id
+        self.npes = npes
         self.shared_status_table = shared_status_table
         self.assigned_row_ids = assigned_row_ids.copy() # output rows processed by this PE
 
         self.NUM_ASSIGNED_ROWS = len(assigned_row_ids)
         self.rows_processed = 0
+        self.leftover = -1
 
         self.a_row_id = assigned_row_ids.copy()
         self.a_colidx = [] # load the corresponding column of matrix A    
@@ -39,6 +45,16 @@ class BasePE:
         self.START_C_INDICE_ADDR = self.START_C_ADDR + 4 * csr_out.shape[0]
 
         self.stored_data = [[[], []], [[], []]]
+
+        self.have_ptr = []
+        for i in range(self.npes):
+            self.stored_data[1][1].append([ ])
+            self.have_ptr.append([-1, -1])  
+
+        self.pe_nnz = []
+        for i in range(self.npes):
+            self.pe_nnz.append(0)
+
         self.a_row_info = [] #this is used to track the start_idx and nnzs of a a_rows need to be processed
         self.n_b_row_ptr = 0
 
@@ -51,7 +67,9 @@ class BasePE:
         self.nnz_outrow_list = []
 
         self.cur_a_row_nnz = 0
-        self.cur_b_row_nnz = 0
+        self.cur_b_row_nnz = []
+        for i in range(npes):
+            self.cur_b_row_nnz.append(0)    
 
         self.clk = 0
 
@@ -61,7 +79,9 @@ class BasePE:
         self.a_ind_id = 0
         self.b_ptr_id = 0
         self.b_ind_id = 0
-        self.cur_c_row_nnz = 0         
+        self.cur_c_row_nnz = 0
+
+        self.request_q = []       
 
     def receive(self, request):
         valid = request[0]
@@ -75,38 +95,22 @@ class BasePE:
             matrix_id = received_data_tuple[0]
             data_type = received_data_tuple[1]
             #self.stored_data[matrix_id][data_type].extend(received_data_tuple[2])
-            find_and_fill(self.stored_data[matrix_id][data_type], received_data_tuple)
-            pass
-            '''
-            #the following is used to make sure the PE is not loading nnz of B of next output row
-            if matrix_id == 0 and data_type == 0:
-                self.a_row_info.extend(received_data_tuple[2])
-
-
-            if matrix_id == 1 and data_type == 0:
-                self.n_b_row_ptr += 1 #whenever a row_ptr of B is read
-                self.count_nnz_per_outrow += received_data_tuple[2][0][1]
-
-                
-            if len(self.a_row_info):
-                #when the number of row_ptr of B equals to the required number of row_b
-                if self.a_row_info[0][1]==self.n_b_row_ptr and self.n_b_row_ptr != 0:
-                    self.n_b_row_ptr = 0
-                    self.a_row_info.pop(0)
-                    self.stored_data[1][0].append((-1, 0, -1))
-
-                    self.nnz_outrow_list.append(self.count_nnz_per_outrow)
-                    self.count_nnz_per_outrow = 0
-
-            '''
+            if matrix_id == 1 and data_type == 1:
+                find_and_fill(self.stored_data[matrix_id][data_type][request[2]], received_data_tuple, request)
+            else:
+                find_and_fill(self.stored_data[matrix_id][data_type], received_data_tuple, request)
+            
     #when ticks, the PE 1) processes the elements and 2)sends r/w requests
     def tick(self):
-        self.clk+=1
+        self.clk += 1
         # process elements from rows of matrix B
-        if(len(self.stored_data[1][1]) > 0 and self.stored_data[1][1][0][0]!=-1 ):
-            self.curr_data = self.stored_data[1][1].pop(0)
-            self.nnz_processed += 1
         
+
+        for i in range(self.npes):
+            if( len(self.stored_data[1][1][i]) > 0 and self.stored_data[1][1][i][0][0]!=-1 ):
+                self.curr_data = self.stored_data[1][1][i].pop(0)
+                self.nnz_processed += 1
+
         if(len(self.nnz_outrow_list)):
             if (self.nnz_processed == self.nnz_outrow_list[0] or self.nnz_outrow_list[0]==0) and self.fully_loaded:
                 self.processed = 1
@@ -119,6 +123,8 @@ class BasePE:
         # set a limit to the maximum number of outstanding requests a PE can have
         # configure it in the above declaration
         if self.n_outstanding < OUT_LIMIT:
+
+
             # write results back
             # only know where to write until PEs with smaller id finishes loading
                                 
@@ -152,9 +158,9 @@ class BasePE:
                     curr_request = (c_valid, 1, self.id,  int(self.START_C_INDICE_ADDR + self.csr_out.indptr[curr_row_id]*8) \
                         + self.cur_c_row_nnz*8, local_n)    
                     self.cur_c_row_nnz += 8
-                #self.n_outstanding += 1
-            
-                return curr_request
+                
+                self.request_q.append(curr_request)
+                #return curr_request
 
 
 
@@ -167,7 +173,8 @@ class BasePE:
                     self.stored_data[0][0].append([-1, -1, int(self.START_A_ADDR + 4*a_row_id)])
                     self.a_ptr_id += 1
                     self.n_outstanding += 1
-                    return curr_request    
+                    self.request_q.append(curr_request)
+                    #return curr_request    
 
             # matrix a and data buffer
             if len(self.stored_data[0][1]) < A_DATA_BUFFER_SIZE - 8:
@@ -177,7 +184,7 @@ class BasePE:
                     local_n = 8 
                     addr_n = int(self.START_A_INDICE_ADDR + a_row_start_idx*8) + self.cur_a_row_nnz*8
                     if(self.cur_a_row_nnz == 0):
-                        self.a_row_info.append(self.stored_data[0][0][0])
+                        self.a_row_info.append(self.stored_data[0][0][0]) # holds the start_id and nnz of the curr_a_row
 
                     if self.cur_a_row_nnz + 8 >= a_row_nnz:
                         curr_ptr = self.stored_data[0][0].pop(0)
@@ -189,9 +196,6 @@ class BasePE:
                         curr_request = (c_valid, 0, self.id,  int(self.START_A_INDICE_ADDR + a_row_start_idx*8) \
                             + self.cur_a_row_nnz*8, local_n)
                         self.cur_a_row_nnz = 0
-
-                        
-                        #self.a_row_info.append(curr_ptr) #hold the number of rows needed for each output row (in-order)
                     
                     else:
                         c_valid = 1
@@ -205,7 +209,9 @@ class BasePE:
                     
                     if c_valid == 1:
                         self.n_outstanding += 1
-                    return curr_request
+                    self.request_q.append(curr_request)
+                    #return curr_request
+
 
             # matrix b and ptr buffer: issue request to read the indptr of matrix b (row_start and nnz)
             if len(self.stored_data[1][0]) < B_PTR_BUFFER_SIZE:
@@ -217,54 +223,85 @@ class BasePE:
                     self.n_outstanding += 1
                     for m in range(1):
                         self.stored_data[1][0].append([-1, -1, int(self.START_B_ADDR + 4*curr_a_entry[0])])
-                    return curr_request 
+                    self.request_q.append(curr_request)
+                #return curr_request 
 
 
             # matrix b and data buffer
-            if len(self.stored_data[1][1]) < B_DATA_BUFFER_SIZE - 8 and self.stored == 1:
-                # todo: check if all nnz of this row is fetched
-                if len(self.stored_data[1][0]) and self.stored_data[1][0][0][0]!=-1 :
-                    if self.a_row_info[0][1]!=0:
-                        b_row_start_idx = self.stored_data[1][0][0][0]
-                        b_row_nnz = self.stored_data[1][0][0][1]
-                        b_addr = self.stored_data[1][0][0][2]
-                        #if not (b_row_start_idx == -1 and b_row_nnz == 0 and b_addr == -1):
-                        local_n = 8
-                        addr_n = int(self.START_B_INDICE_ADDR + b_row_start_idx*8) + self.cur_b_row_nnz*8
-                        if self.cur_b_row_nnz +8 >= b_row_nnz:
-                            curr_entry = self.stored_data[1][0].pop(0)
-                            local_n = 8 - (self.cur_b_row_nnz + 8 - b_row_nnz)
-                            if b_row_nnz != 0:
-                                c_valid = 1
+            for i in range(self.npes):
+                # when b data buffer is not full and previous results have been stored 
+                if len(self.stored_data[1][1][i]) < B_DATA_BUFFER_SIZE - 8 and self.stored == 1:
+                    # if pe i have a valid ptr or there are available ptr from stored_data[1][0]
+                    if  self.have_ptr[i][0] != -1 or ( len(self.stored_data[1][0]) and self.stored_data[1][0][0][0]!=-1 ) :
+                        if self.a_row_info[0][1]!=0:
+                            #left_over is used to tell if curr_a have other entries
+                            if self.leftover == -1:
+                                self.leftover = self.a_row_info[0][1]
+                            if (self.have_ptr[i][0] != -1):
+                                b_row_start_idx = self.have_ptr[i][0]
+                                b_row_nnz = self.have_ptr[i][1]
+                                
+                            elif (self.leftover > 0):
+                                curr_entry = self.stored_data[1][0].pop(0)
+                                self.have_ptr[i][0] = curr_entry[0]
+                                self.have_ptr[i][1] = curr_entry[1]
+                                
+                                self.pe_nnz[i] += curr_entry[1]
+                                b_row_start_idx = self.have_ptr[i][0]
+                                b_row_nnz = self.have_ptr[i][1]
+                                self.leftover -= 1
                             else:
-                                c_valid = 0
-                            curr_request = (c_valid, 0, self.id,  int(self.START_B_INDICE_ADDR + b_row_start_idx*8) \
-                                + self.cur_b_row_nnz*8, local_n)  
-                            self.cur_b_row_nnz = 0
+                                continue
 
-                            self.n_b_row_ptr += 1 #whenever a row_ptr of B is read
-                            self.count_nnz_per_outrow += curr_entry[1]
+                            #b_addr = self.stored_data[1][0][0][2]
+                            exit_s = 0
+                            #if not (b_row_start_idx == -1 and b_row_nnz == 0 and b_addr == -1):
+                            for mm in range(CONCURRENT_C):
+                                local_n = 8
+                                addr_n = int(self.START_B_INDICE_ADDR + b_row_start_idx*8) + self.cur_b_row_nnz[i]*8
+                                if self.cur_b_row_nnz[i] +8 >= b_row_nnz:
+                                    #curr_entry = self.stored_data[1][0].pop(0)
 
-                        else:
-                            c_valid = 1
-                            curr_request = (c_valid, 0, self.id,  int(self.START_B_INDICE_ADDR + b_row_start_idx*8) \
-                                + self.cur_b_row_nnz*8, local_n)  
-                            self.cur_b_row_nnz += 8
-                        if c_valid == 1:
-                            for m in range(local_n):
-                                self.stored_data[1][1].append([-1, -1, addr_n])
-                            self.n_outstanding += 1
+                                    local_n = 8 - (self.cur_b_row_nnz[i] + 8 - b_row_nnz)
+                                    if b_row_nnz != 0:
+                                        c_valid = 1
+                                    else:
+                                        c_valid = 0
+                                    curr_request = (c_valid, 0, i,  int(self.START_B_INDICE_ADDR + b_row_start_idx*8) \
+                                        + self.cur_b_row_nnz[i]*8, local_n)  
+                                    self.cur_b_row_nnz[i] = 0
+
+                                    self.n_b_row_ptr += 1 #whenever a row_ptr of B is read
+                                    self.count_nnz_per_outrow += self.have_ptr[i][1]
+                                    self.have_ptr[i][0] = -1
+                                    self.have_ptr[i][1] = -1
+                                    exit_s = 1
+                                else:
+                                    c_valid = 1
+                                    curr_request = (c_valid, 0, i,  int(self.START_B_INDICE_ADDR + b_row_start_idx*8) \
+                                        + self.cur_b_row_nnz[i]*8, local_n)  
+                                    self.cur_b_row_nnz[i] += 8
+                                if c_valid == 1:
+                                    for m in range(local_n):
+                                        self.stored_data[1][1][i].append([-1, -1, addr_n])
+                                    self.n_outstanding += 1
+                                
+                                self.request_q.append(curr_request)
+                                if exit_s:
+                                    break
 
                 if len(self.a_row_info):   #self.a_row_info[0][1]==25 and self.rows_processed > 115                 
                     if self.n_b_row_ptr == self.a_row_info[0][1]:
                         self.n_b_row_ptr = 0
                         self.a_row_info.pop(0)
                         self.fully_loaded = 1
+                        print("fully_loaded...")
                         self.nnz_outrow_list.append(self.count_nnz_per_outrow)
                         self.count_nnz_per_outrow = 0
+                        self.leftover = -1
                         self.stored = 0
 
-                    return curr_request
+                    #return curr_request
 
                 
 
@@ -276,4 +313,4 @@ class BasePE:
 
 
 
-        return curr_request
+        return self.request_q

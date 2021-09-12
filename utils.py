@@ -5,6 +5,22 @@ import sys
 import random
 from random import randint
 
+
+def get_source(addr, matrix_space_bound, N_ROWS):
+    source_name = ''
+    if addr < matrix_space_bound:
+        source_name += "load_a"
+    else:
+        addr -= matrix_space_bound
+        source_name += "load_b"
+    
+    if addr < N_ROWS*4:
+        source_name += "_ptr"
+    else:
+        source_name += "_data"
+    
+    return source_name
+
 def select_data(request, csr_ins):
     addr = request[3]
     local_n = request[4]
@@ -29,7 +45,7 @@ def select_data(request, csr_ins):
         combined_v = np.column_stack((first_v, second_v)).tolist()
     return (load_a, load_ptr, combined_v, request[3])
 
-def find_and_fill(store_list, loaded_blk):
+def find_and_fill(store_list, loaded_blk, request=None):
     addr_n = loaded_blk[3]
     total_length = len(loaded_blk[2])
 
@@ -62,9 +78,40 @@ def cal_all_nnzs(csr_a, csr_b):
 def select_row_ids(csr_ins, row_id):
     return csr_ins.indices[csr_ins.indptr[row_id] : csr_ins.indptr[row_id + 1]]
 
+def select_row_data(csr_ins, row_id):
+    return csr_ins.data[csr_ins.indptr[row_id] : csr_ins.indptr[row_id + 1]]
+
 def get_row_lengths(csr_ins, row_ids):
     partial_csr = csr_ins[row_ids, :]
     return partial_csr.indptr[1:] - partial_csr.indptr[:-1]
+
+def fifo_read(buf, buffer_head, buffer_tail, fifo_size):
+    valid = 0
+    val = None
+    if buffer_head != buffer_tail: #if theres avaiable entry
+        valid = 1
+        val = buf[buffer_tail]
+        #buffer_tail += 1
+        #if buffer_tail == fifo_size:
+        #    buffer_tail = 0
+    else:
+        valid = 0
+
+    return valid, val, buffer_head, buffer_tail
+
+def fifo_pop(buf, buffer_head, buffer_tail, fifo_size):
+    buffer_tail += 1
+    if buffer_tail == fifo_size:
+        buffer_tail = 0
+
+
+def fifo_write(buf, buffer_head, buffer_tail, fifo_size, gap):
+    valid = 1
+    if (buffer_head + gap >= buffer_tail and buffer_tail > buffer_head ) or (  buffer_head + gap >= fifo_size and buffer_tail <= buffer_head + gap - fifo_size) :
+        #no more room
+        valid = 0
+    return valid
+
 
 def load_sparse_matrix(path_prefix):
     if len(sys.argv) == 4:

@@ -80,6 +80,7 @@ class HashPE:
             matrix_id = received_data_tuple[0]
             data_type = received_data_tuple[1]
             #self.stored_data[matrix_id][data_type].extend(received_data_tuple[2])
+            
             find_and_fill(self.stored_data[matrix_id][data_type], received_data_tuple)
             
     #when ticks, the PE 1) processes the elements and 2)sends r/w requests
@@ -262,7 +263,8 @@ class HashPE:
                         self.fully_loaded = 1
                         self.nnz_outrow_list.append(self.count_nnz_per_outrow)
                         self.count_nnz_per_outrow = 0
-                        self.stored = 0
+                        self.stored = 0 # disable loading B[1][1]
+                        self.leftover = -1
 
                     #return curr_request
 
