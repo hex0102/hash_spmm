@@ -30,7 +30,7 @@ class Memory:
             addr = request[3]
             channel_id = (addr >> self.offset) & ((1<<self.c_bits) - 1)
             source_name = get_source(addr, self.matrix_space_bound, self.N_ROWS)
-            print("{}: enqueues {} to channel {} for {}".format(self.clk, addr, channel_id, source_name))
+            #print("{}: enqueues {} to channel {} for {}".format(self.clk, addr, channel_id, source_name))
 
             #if(request[2]==129 and request[1]==0):
             #    print("enqueues {} to channel {}".format(request[3], channel_id))

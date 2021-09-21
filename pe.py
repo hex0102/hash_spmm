@@ -19,7 +19,7 @@ class BasePE:
         self.shared_status_table = shared_status_table
         self.assigned_row_ids = assigned_row_ids.copy() # output rows processed by this PE
 
-        self.NUM_ASSIGNED_ROWS = len(assigned_row_ids)
+        self.NUM_ASSIGNED_ROWS = 1000 #len(assigned_row_ids)
         self.rows_processed = 0
 
         self.a_row_id = assigned_row_ids.copy()
@@ -37,7 +37,7 @@ class BasePE:
         self.START_B_INDICE_ADDR = self.START_B_ADDR + 4 * csr_m.shape[0]
         self.START_C_ADDR = 2 * self.START_B_ADDR 
         self.START_C_INDICE_ADDR = self.START_C_ADDR + 4 * csr_out.shape[0]
-
+ 
         self.stored_data = [[[], []], [[], []]]
         self.a_row_info = [] #this is used to track the start_idx and nnzs of a a_rows need to be processed
         self.n_b_row_ptr = 0

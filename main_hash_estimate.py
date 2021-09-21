@@ -6,13 +6,14 @@ import concurrent.futures
 import threading
 import time
 import math
+from utils import *
 
-vectorize = 1
+vectorize = 0
 V_LEN = 4
 
 HASH_SCAL = 107
 MIN_HT_S = 8
-print_freq = 5000
+print_freq = 10000
 
 def select_row_ids(csr_ins, row_id):
     return csr_ins.indices[csr_ins.indptr[row_id] : csr_ins.indptr[row_id + 1]]
@@ -187,7 +188,7 @@ def hash_numeric_parallel(csr_a, csr_b, ht_size_array):
         ht_val[i] = futures[i].result()[2]
     print("--- %s seconds ---" % (time.time() - start_time))
     print(total_collision)
-    return ht_check, ht_val
+    return total_collision, ht_check, ht_val
 
 
 def hash_numeric(csr_a, csr_b, ht_size_array):
@@ -246,26 +247,45 @@ def hash_numeric(csr_a, csr_b, ht_size_array):
     print("--- %s seconds ---" % (time.time() - start_time))
     return ht_check, ht_val
 
+def report_occupancy(csr_a, csr_b, ht_size_array):
+    csr_c = csr_a * csr_b
+    row_length_array = csr_c.indptr[1:] - csr_c.indptr[:-1]
+
+    non_empty_inx = np.nonzero(ht_size_array)
+    real_occupancy = row_length_array[non_empty_inx]/ht_size_array[non_empty_inx]
+    return real_occupancy.mean()
+
+
+
 #this script compares on-chip read and write  of matraptor and hash-based method, assuming enough on-chip memory
 if __name__ == "__main__":
-    print_freq = 5000
-    stats_file = open("stats.txt", "a+")
+    print_freq = 10000
+    outfilename = "init_collision_comparision.log"
+    stats_file = open(outfilename, "a+")
     path_prefix = "/home/xinhe/hash_spmm/"
+    input_a, filename = load_sparse_matrix(path_prefix)
+    '''
     full_path = path_prefix + sys.argv[1]
     input_a = scipy.io.mmread(full_path) #"filter3D/filter3D.mtx"
+    '''
     output_c = input_a*input_a
     
-    data_name = full_path.rsplit('/', 1)[-1]
     print("A_NNZ:{} A_NNZ/ROW:{} C_NNZ:{} C_NNZ/ROW:{}".format(input_a.nnz, input_a.nnz/input_a.shape[0], output_c.nnz, output_c.nnz/output_c.shape[0]))
     n_row = input_a.shape[0]
     n_col = input_a.shape[1]
     assert(input_a.shape[0] == input_a.shape[1])
     input_a = input_a.tocsr()
     c_nnz1 = hash_symbolic_calculated(input_a, input_a)
-    #c_nnz2 = hash_symbolic_upperbound(input_a, input_a)
-    ht_size_array = next_power_of_2(c_nnz1)
-    ht_check0, ht_val0 = hash_numeric(input_a, input_a, ht_size_array)
-    ht_check, ht_val = hash_numeric_parallel(input_a, input_a, ht_size_array)
+    total_nnz = cal_all_nnzs(input_a, input_a)
 
+    # c_nnz2 = hash_symbolic_upperbound(input_a, input_a)
+    ht_size_array = next_power_of_2(c_nnz1)
+    # ht_check0, ht_val0 = hash_numeric(input_a, input_a, ht_size_array)
+    total_collision, ht_check, ht_val = hash_numeric_parallel(input_a, input_a, ht_size_array)
+    row_length_array = input_a.indptr[1:] - input_a.indptr[:-1]
+
+    occupancy = report_occupancy(input_a, input_a, ht_size_array) 
+    print("{} {} {} {} {} {} {} {}".format(filename, input_a.nnz, input_a.nnz/input_a.shape[0], \
+        np.max(row_length_array), total_nnz, total_nnz/input_a.shape[0], total_collision, occupancy), file=stats_file)
     #print(c_nnz2.sum()) 
     print("Completed")

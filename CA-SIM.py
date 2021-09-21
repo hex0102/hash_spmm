@@ -27,7 +27,7 @@ from newhashpe import *
 path_prefix = "~/hash_spmm/"
 
 # hyper-params
-n_channels = 4 # number of memory channels 
+n_channels = 8 # number of memory channels 
 n_pes = 16
 
 
@@ -77,6 +77,7 @@ def start_run(csr_ins):
         
 
         if sum(shared_status_table) == n_pes:
+            print("total request handled: {}".format(main_memory.n_request))
             print("The overall execution time is: "+str(clk)+" cycles.")
             return clk
             #break
@@ -135,6 +136,7 @@ def start_run_new_hash(csr_ins):
     matrix_space_bound = csr_ins.shape[0]*4 + csr_ins.nnz*8 
     N_ROWS = csr_ins.shape[0]
     main_memory = Memory(n_channels, matrix_space_bound, N_ROWS)
+    test = get_nnzs(csr_ins, 7114)
     pe_array = []
     shared_complete_list = np.zeros(csr_out.shape[0])
     shared_status_table = np.zeros(n_pes)
@@ -186,13 +188,13 @@ if __name__ == "__main__":
     row_length_array = csr_ins.indptr[1:] - csr_ins.indptr[:-1]
     total_nnz = cal_all_nnzs(csr_ins, csr_ins)
     #print(total_nnz)
-    #baseline_cycles = start_run(csr_ins)
-    #print(baseline_cycles)
+    # baseline_cycles = start_run(csr_ins)
+    # print(baseline_cycles)
     #hash_cycles = start_run_hash(csr_ins)
     #print(hash_cycles)
     new_hash_cycles = start_run_new_hash(csr_ins)
     print(new_hash_cycles)
-    #print("{} {} {} {} {} {} {} {} {}".format(filename, csr_ins.nnz, csr_ins.nnz/csr_ins.shape[0], \
-    #    np.max(row_length_array), total_nnz, total_nnz/csr_ins.shape[0], baseline_cycles, hash_cycles, new_hash_cycles), file=stats_file)
+    #print("{} {} {} {} {} {} {} {}".format(filename, csr_ins.nnz, csr_ins.nnz/csr_ins.shape[0], \
+    #    np.max(row_length_array), total_nnz, total_nnz/csr_ins.shape[0], baseline_cycles, new_hash_cycles), file=stats_file)
 
 

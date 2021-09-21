@@ -67,6 +67,13 @@ def cal_nnz(csr_ins, row_id):
         #print(select_row_ids(csr_ins, row_id_array[i]).size)
     return cc
 
+def get_nnzs(csr_ins, row_id):
+    row_id_array = select_row_ids(csr_ins, row_id)
+    result_np_array = np.array([])
+    for i in range(row_id_array.size):
+        result_np_array = np.concatenate([result_np_array, select_row_ids(csr_ins, row_id_array[i])])  
+    return result_np_array       
+
 def cal_all_nnzs(csr_a, csr_b):
     cc = csr_a.nnz
     for i in range(csr_a.shape[0]):
@@ -74,6 +81,15 @@ def cal_all_nnzs(csr_a, csr_b):
         for j in range(a_row_ids.size):
             cc += select_row_ids(csr_b, a_row_ids[j]).size
     return cc
+
+def cal_nnzs_idx(csr_a, csr_b, idx):
+    cc = 0
+    for i in range(idx):
+        a_row_ids = select_row_ids(csr_a, i)
+        for j in range(a_row_ids.size):
+            cc += select_row_ids(csr_b, a_row_ids[j]).size
+    return cc
+
 
 def select_row_ids(csr_ins, row_id):
     return csr_ins.indices[csr_ins.indptr[row_id] : csr_ins.indptr[row_id + 1]]
