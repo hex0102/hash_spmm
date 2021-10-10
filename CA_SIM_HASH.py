@@ -114,7 +114,8 @@ def start_run_hash(csr_ins):
                 pe_array[0].receive(curr_request)
         
 
-        # gather the requests from pes and send it to main memory
+        #gather the requests from pes and send it to main memory
+        #for i in range(n_pes):
         curr_request_list = pe_array[0].tick()
         for i in range(len(curr_request_list)):
             curr_request = curr_request_list.pop(0)

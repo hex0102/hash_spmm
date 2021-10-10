@@ -6,6 +6,11 @@ import random
 from random import randint
 
 
+def hash_index(key, i, table_size):
+    if i == 0:
+        hash_addr = (key * 107) & (table_size - 1)
+    return hash_addr
+
 def get_source(addr, matrix_space_bound, N_ROWS):
     source_name = ''
     if addr < matrix_space_bound:
@@ -67,6 +72,14 @@ def cal_nnz(csr_ins, row_id):
         #print(select_row_ids(csr_ins, row_id_array[i]).size)
     return cc
 
+def getNNZ_by_id(csr_a, csr_b, row_id):
+    row_id_array = select_row_ids(csr_a, row_id)
+    result_np_array = np.array([]).astype(int)
+    for i in range(row_id_array.size):
+        result_np_array = np.concatenate([result_np_array, select_row_ids(csr_b, row_id_array[i])])
+    return result_np_array 
+
+
 def get_nnzs(csr_ins, row_id):
     row_id_array = select_row_ids(csr_ins, row_id)
     result_np_array = np.array([])
@@ -81,6 +94,14 @@ def cal_all_nnzs(csr_a, csr_b):
         for j in range(a_row_ids.size):
             cc += select_row_ids(csr_b, a_row_ids[j]).size
     return cc
+
+
+def check_valid(input_data, pe_done):
+    for i in range(len(input_data)):
+        if pe_done[i] == 1:
+            continue
+        if len(input_data[i]) > 0 and input_data[i][0][0]!=-1:
+            return True
 
 def cal_nnzs_idx(csr_a, csr_b, idx):
     cc = 0

@@ -19,7 +19,7 @@ class BasePE:
         self.shared_status_table = shared_status_table
         self.assigned_row_ids = assigned_row_ids.copy() # output rows processed by this PE
 
-        self.NUM_ASSIGNED_ROWS = 1000 #len(assigned_row_ids)
+        self.NUM_ASSIGNED_ROWS = len(assigned_row_ids)
         self.rows_processed = 0
 
         self.a_row_id = assigned_row_ids.copy()

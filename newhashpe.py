@@ -26,7 +26,7 @@ class newHashPE:
         self.shared_status_table = shared_status_table
         self.assigned_row_ids = assigned_row_ids.copy() # output rows processed by this PE
 
-        self.NUM_ASSIGNED_ROWS = 16000 #len(assigned_row_ids)
+        self.NUM_ASSIGNED_ROWS = len(assigned_row_ids) #16000 #len(assigned_row_ids)
         self.rows_processed = 0
         self.leftover = -1
 
@@ -129,7 +129,9 @@ class newHashPE:
         # process elements from rows of matrix B
         pe_processed = 0
         if self.stored == 1:
-            for i in range(self.npes):
+            i = 0
+            #for i in range(self.npes):
+            while check_valid(self.stored_data[1][1], self.pe_done) and pe_processed < self.npes:
                 if( len(self.stored_data[1][1][i]) > 0 and self.stored_data[1][1][i][0][0]!=-1):
                     if len(self.pe_nnz[i])!=0 and self.pe_nnz[i][0][0]!=0 and self.pe_nnz[i][0][1] == 1:                 
                         '''
@@ -147,6 +149,9 @@ class newHashPE:
                 # remaining pe nnz for a row  AND remaing nnz is 0 and
                 if len(self.pe_nnz[i])!=0 and self.pe_nnz[i][0][0]==0 and self.pe_nnz[i][0][1] == 1 and len(self.all_nnz_counted)!=0 and self.all_nnz_counted[0] == 1:
                     self.pe_done[i] = 1
+                i += 1
+                if(i == self.npes):
+                    i = 0
 
 
         if  sum(self.pe_done) == self.npes: #self.nnz_processed == self.nnz_outrow_list[0] or self.nnz_outrow_list[0]==0:
