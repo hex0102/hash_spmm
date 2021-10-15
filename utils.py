@@ -8,7 +8,7 @@ from random import randint
 
 def hash_index(key, i, table_size):
     if i == 0:
-        hash_addr = (key * 107) & (table_size - 1)
+        hash_addr = (int(key) * 1) & (table_size - 1)
     return hash_addr
 
 def get_source(addr, matrix_space_bound, N_ROWS):

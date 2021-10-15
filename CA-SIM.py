@@ -23,11 +23,13 @@ from utils import *
 from pe import *
 from hashpe import *
 from newhashpe import *
+from fullhash import *
 
 path_prefix = "~/hash_spmm/"
 
 # hyper-params
 n_channels = 8 # number of memory channels 
+n_loaders = 16
 n_pes = 16
 
 
@@ -176,7 +178,53 @@ def start_run_new_hash(csr_ins):
             #break
         clk += 1 #increment the clk counter
 
+def start_run_full_hash(csr_ins):
+    # setup
+    csr_out = csr_ins*csr_ins
+    matrix_space_bound = csr_ins.shape[0]*4 + csr_ins.nnz*8 
+    N_ROWS = csr_ins.shape[0]
+    main_memory = Memory(n_channels, matrix_space_bound, N_ROWS)
+    test = get_nnzs(csr_ins, 7114)
+    pe_array = []
+    shared_complete_list = np.zeros(csr_out.shape[0])
+    shared_status_table = np.zeros(n_pes)
+    
+    assigned_rows =[ *range(0, csr_ins.shape[0], 1)]
+    hash_sys = fullHash(n_loaders, n_pes, assigned_rows, csr_ins, csr_out, shared_complete_list, shared_status_table)
+    
+    print("#start executing...")
+    clk = 0    
+    while(1):
+        #gather returned request from all memory channels
+        returned_requests = main_memory.tick()
 
+        #process the received requests.
+        for i in range(len(returned_requests)):
+            curr_request = returned_requests[i]
+            r_valid = curr_request[0]
+            r_type = curr_request[1]
+            r_id = curr_request[2]
+            r_addr = curr_request[3]
+            r_n = curr_request[4]
+            # process valid and read request
+            if(r_valid == 1 and r_type == 0): 
+                hash_sys.receive(curr_request)
+        
+
+        #gather the requests from pes and send it to main memory
+        #for i in range(n_pes):
+        curr_request_list = hash_sys.tick()
+        for i in range(len(curr_request_list)):
+            curr_request = curr_request_list.pop(0)
+            main_memory.enqueue(curr_request)
+            pass
+
+        if sum(shared_status_table) == 1:
+            print("total request handled: {}".format(main_memory.n_request))
+            print("The overall execution time is: "+str(clk)+" cycles.")
+            return clk
+            #break
+        clk += 1 #increment the clk counter
 
 
 
@@ -187,11 +235,12 @@ if __name__ == "__main__":
     row_length_array = csr_ins.indptr[1:] - csr_ins.indptr[:-1]
     total_nnz = cal_all_nnzs(csr_ins, csr_ins)
     #print(total_nnz)
-    baseline_cycles = start_run(csr_ins)
-    print(baseline_cycles)
+    #baseline_cycles = start_run(csr_ins)
+    #print(baseline_cycles)
     #hash_cycles = start_run_hash(csr_ins)
     #print(hash_cycles)
-    new_hash_cycles = start_run_new_hash(csr_ins)
+    #new_hash_cycles = start_run_new_hash(csr_ins)
+    new_hash_cycles = start_run_full_hash(csr_ins)
     print(new_hash_cycles)
     print("{} {} {} {} {} {} {} {}".format(filename, csr_ins.nnz, csr_ins.nnz/csr_ins.shape[0], \
         np.max(row_length_array), total_nnz, total_nnz/csr_ins.shape[0], baseline_cycles, new_hash_cycles), file=stats_file)
