@@ -202,22 +202,23 @@ def start_run_full_hash(csr_ins):
         for i in range(len(returned_requests)):
             curr_request = returned_requests[i]
             r_valid = curr_request[0]
-            r_type = curr_request[1]
-            r_id = curr_request[2]
-            r_addr = curr_request[3]
-            r_n = curr_request[4]
+            # r_type = curr_request[1]
+            # r_id = curr_request[2]
+            # r_addr = curr_request[3]
+            # r_n = curr_request[4]
             # process valid and read request
-            if(r_valid == 1 and r_type == 0): 
+            if(r_valid == 1): 
                 hash_sys.receive(curr_request)
         
 
         #gather the requests from pes and send it to main memory
         #for i in range(n_pes):
         curr_request_list = hash_sys.tick()
-        for i in range(len(curr_request_list)):
-            curr_request = curr_request_list.pop(0)
-            main_memory.enqueue(curr_request)
-            pass
+        if curr_request_list != None:
+            for i in range(len(curr_request_list)):
+                curr_request = curr_request_list.pop(0)
+                main_memory.enqueue(curr_request)
+                pass
 
         if sum(shared_status_table) == 1:
             print("total request handled: {}".format(main_memory.n_request))
@@ -242,7 +243,9 @@ if __name__ == "__main__":
     #new_hash_cycles = start_run_new_hash(csr_ins)
     new_hash_cycles = start_run_full_hash(csr_ins)
     print(new_hash_cycles)
-    print("{} {} {} {} {} {} {} {}".format(filename, csr_ins.nnz, csr_ins.nnz/csr_ins.shape[0], \
-        np.max(row_length_array), total_nnz, total_nnz/csr_ins.shape[0], baseline_cycles, new_hash_cycles), file=stats_file)
+    #print("{} {} {} {} {} {} {} {}".format(filename, csr_ins.nnz, csr_ins.nnz/csr_ins.shape[0], \
+        #    np.max(row_length_array), total_nnz, total_nnz/csr_ins.shape[0], baseline_cycles, new_hash_cycles), file=stats_file)
+    print("{} {} {} {} {} {} {}".format(filename, csr_ins.nnz, csr_ins.nnz/csr_ins.shape[0], \
+        np.max(row_length_array), total_nnz, total_nnz/csr_ins.shape[0], new_hash_cycles), file=stats_file)
 
 

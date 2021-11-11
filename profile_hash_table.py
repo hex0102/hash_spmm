@@ -9,15 +9,15 @@ import math
 from utils import *
 
 vectorize = 0
-V_LEN = 4
+
 
 HASH_SCAL = 107
 MIN_HT_S = 8
 print_freq = 10000
 
 PROB_LENGTH = 32
-ON_CHIP_SIZE = 8192
-V_TH = 5
+ON_CHIP_SIZE = 256
+V_TH = 100
 
 def select_row_ids(csr_ins, row_id):
     return csr_ins.indices[csr_ins.indptr[row_id] : csr_ins.indptr[row_id + 1]]
@@ -197,6 +197,7 @@ def process_each_row(csr_a, csr_b, i, ht_size, ht_check, ht_freq, assigned_table
         OFF_CHIP_SIZE_local = ht_size - ON_CHIP_SIZE
 
     assigned_table_size += ON_CHIP_SIZE_local + OFF_CHIP_SIZE_local # this is a must for call by reference
+    cc = 0
     for j in range(curr_col_ids.size):
         cur_row_ids_b = select_row_ids(csr_b, curr_col_ids[j])
         #cur_row_vals_b = select_row_vals(csr_b, curr_col_ids[j])
@@ -206,6 +207,7 @@ def process_each_row(csr_a, csr_b, i, ht_size, ht_check, ht_freq, assigned_table
         #p_fp = 0.0001
         #n_fp = int(cur_row_ids_b.size*p_fp) 
         #fp_list = np.random.choice(cur_row_ids_b.size, n_fp)
+        
         for m in range(cur_row_ids_b.size):
             key = cur_row_ids_b[m]
             # PROB_LENGTH should be modified
@@ -216,7 +218,9 @@ def process_each_row(csr_a, csr_b, i, ht_size, ht_check, ht_freq, assigned_table
             status_tuple = insert_on_chip(key, 1, 0, ht_check, ht_freq, hash_linear_probing, PROB_LENGTH_local, ON_CHIP_SIZE_local) # from core
             if OFF_CHIP_SIZE_local != 0:
                 if status_tuple[1] == -1 and status_tuple[0] == 0:
-                    key, freq = insert_off_chip(status_tuple[0], status_tuple[1], 1, ht_check, ht_freq, hash_linear_probing, ON_CHIP_SIZE_local, OFF_CHIP_SIZE_local, V_TH) # from direct core 
+                    cc+=1
+                    print("{} {}".format(key, 1))
+                    key, freq = insert_off_chip(key, 1, 1, ht_check, ht_freq, hash_linear_probing, ON_CHIP_SIZE_local, OFF_CHIP_SIZE_local, V_TH) # from direct core 
                     if key != -1:   
                         replaced_item = insert_on_chip(key, freq, 1, ht_check, ht_freq, hash_linear_probing, PROB_LENGTH, ON_CHIP_SIZE_local) # replacement from DRAM
                         insert_off_chip(replaced_item[0], replaced_item[1], 0, ht_check, ht_freq, hash_linear_probing, ON_CHIP_SIZE_local, OFF_CHIP_SIZE_local, V_TH) # from direct core 

@@ -4,11 +4,25 @@ from scipy import io
 import sys
 import random
 from random import randint
+import math
+import numpy.ma as ma
+
+PROB_LENGTH = 32
+HASH_ITEM_SIZE = 12 # 12B: idx4, val4, freq4
+
+PE_START_ID = 100 
+
+# off-chip hash table size
+HASH_TABLE_OFF_CHIP = 1048576 # 2^20
+
+
+V_LEN = 4
+
 
 
 def hash_index(key, i, table_size):
     if i == 0:
-        hash_addr = (int(key) * 1) & (table_size - 1)
+        hash_addr = (int(key) * 107) & (int(table_size) - 1)
     return hash_addr
 
 def get_source(addr, matrix_space_bound, N_ROWS):
@@ -42,13 +56,30 @@ def select_data(request, csr_ins):
         second_v = [csr_ins.indptr[int(addr/4)+1] - csr_ins.indptr[int(addr/4)]]
         combined_v = np.column_stack((first_v, second_v)).tolist()
     else:
-        #load a data block (8 pairs ßat most)
+        #load a data block (8 pairs at most)
         load_ptr = 1
         idx = int((addr/4 - N_ROWS)/2)
         first_v = csr_ins.indices[ idx : idx + local_n]
         second_v = csr_ins.data[ idx : idx + local_n]
         combined_v = np.column_stack((first_v, second_v)).tolist()
     return (load_a, load_ptr, combined_v, request[3])
+
+def select_external_data(request, external_hashtable, offset):
+    addr = request[3]
+    local_n = request[4]
+    addr -= offset
+    entry_indx = addr/HASH_ITEM_SIZE
+    cur_entry = external_hashtable[int(entry_indx)]
+
+    return [cur_entry[0], cur_entry[1], cur_entry[2], cur_entry[3]]
+
+def write_external_data(request, external_hashtable, offset):
+    addr = request[3]
+    addr -= offset
+    entry_indx = addr/HASH_ITEM_SIZE
+    external_hashtable[int(entry_indx)][0] = request[5][0]
+    external_hashtable[int(entry_indx)][1] = request[5][1]
+    external_hashtable[int(entry_indx)][2] = request[5][2]   
 
 def find_and_fill(store_list, loaded_blk, request=None):
     addr_n = loaded_blk[3]
@@ -63,6 +94,36 @@ def find_and_fill(store_list, loaded_blk, request=None):
     for i in range(total_length):
         store_list[first_index + i][0] = loaded_blk[2][i][0]
         store_list[first_index + i][1] = loaded_blk[2][i][1]
+
+
+#the upper bound nnz is calculated
+def hash_symbolic_upperbound(csr_a, csr_b):
+    csr_a = csr_a.tocsr()
+    csr_b = csr_b.tocsr()
+    c_nnz = np.zeros(csr_a.shape[0])
+    for i in range(csr_a.shape[0]):
+        curr_col_ids = csr_a.indices[csr_a.indptr[i] : csr_a.indptr[i+1]]
+        for j in range(curr_col_ids.size):
+            c_nnz[i] += select_row_ids(csr_b, curr_col_ids[j]).size    
+    return c_nnz
+
+def next_power_of_2_single(x):
+    result = 0 if x == 0 else 2**(int(x) - 1).bit_length()
+
+    if result > 0 and result < V_LEN:
+        result = V_LEN
+    return result
+
+def next_power_of_2(x):
+    ht_size_array = np.zeros(x.size).astype(int)
+    x = x.astype(int)
+    for i in range(x.size):
+        ht_size_array[i] =  0 if x[i] == 0 else 2**(int(x[i]) - 1).bit_length() 
+
+    for i in range(ht_size_array.size):
+        if(ht_size_array[i]>0 and ht_size_array[i]<V_LEN):
+            ht_size_array[i] = V_LEN      
+    return ht_size_array
 
 def cal_nnz(csr_ins, row_id):
     row_id_array = select_row_ids(csr_ins, row_id)
@@ -135,6 +196,53 @@ def fifo_read(buf, buffer_head, buffer_tail, fifo_size):
         valid = 0
 
     return valid, val, buffer_head, buffer_tail
+
+
+def build_tree(n_inputs, n_radix):
+    n_depth = int(math.ceil(math.log(n_inputs, n_radix)))
+
+    
+    used_list = []
+    for i in range(n_depth):
+        used_list.append(pow(n_radix, i))
+    
+    if n_depth > 1:
+        # for the leaf layer
+        max_last_layer = pow(n_radix, n_depth)
+        max_parent_layer = pow(n_radix, n_depth - 1)
+        #n_parent_for_input + n_parent_for_child = n_radix^(n_depth - 1)
+        #n_parent_for_input + n_radix*n_parent_for_child >= n_inputs
+        n_parent_for_input = int(( n_radix * pow(n_radix, n_depth - 1) - n_inputs)/(n_radix-1))
+        n_leaf_node = n_inputs - n_parent_for_input
+        used_list.append(n_leaf_node)
+    else:
+        used_list.append(n_inputs)
+
+    return used_list
+
+def check_ready(node_id, node_status, n_radix):
+    
+    leftmost_child = node_id*n_radix + 1
+    rightmost_child = (node_id + 1)*n_radix
+    child_node_status = node_status[leftmost_child: rightmost_child + 1, :]
+    if np.sum(child_node_status[:, 1]) == child_node_status.shape[0]:
+        return 1, np.sum(child_node_status[:,0])
+    else:
+        return 0, 0
+
+
+
+
+             
+        
+
+
+
+
+    #each tasks is [i0, i1, i2, p0, p1, p2]
+
+
+#test =  build_tree(18, 3)   
 
 def fifo_pop(buf, buffer_head, buffer_tail, fifo_size):
     buffer_tail += 1

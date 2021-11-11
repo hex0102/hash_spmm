@@ -64,7 +64,7 @@ def get_median_max(input_a, input_b, partition_size):
 
         max_nnz += max_flops
         average_nnz += int(np.mean(curr_partition))
-    return max_nnz, average_nnz
+    return max_nnz, average_nnz, flops_row
 
 
 if __name__ == "__main__":
@@ -81,7 +81,7 @@ if __name__ == "__main__":
     #'webbase-1M/webbase-1M.mtx'
     input_a = input_a.tocsr()
     output_c = input_a*input_a
-    no_collision_percentage = count_N_summation(input_a, input_a)
+    #no_collision_percentage = count_N_summation(input_a, input_a)
     data_name = full_path.rsplit('/', 1)[-1]
     print("A_NNZ:{} A_NNZ/ROW:{} C_NNZ:{} C_NNZ/ROW:{}".format(input_a.nnz, input_a.nnz/input_a.shape[0], output_c.nnz, output_c.nnz/output_c.shape[0]))
     n_row = input_a.shape[0]
@@ -90,12 +90,12 @@ if __name__ == "__main__":
     input_a = input_a.tocsr()
     
     gt_cc = get_gt_way(input_a, 64)
-    max_nnz, average_nnz = get_median_max(input_a, input_a, 512)
+    max_nnz, average_nnz, flops_row = get_median_max(input_a, input_a, 512)
 
     #print("{},{},{},{},{},{},{}".format(data_name, input_a.shape[0], input_a.nnz, input_a.nnz/input_a.shape[0], 
     #    output_c.nnz, output_c.nnz/output_c.shape[0], gt_cc), file=stats_file)
 
-    print("{},{},{},{},{},{},{},{},{},{},{}".format(data_name, input_a.shape[0], input_a.nnz, input_a.nnz/input_a.shape[0], 
-        output_c.nnz, output_c.nnz/output_c.shape[0], gt_cc, gt_cc/input_a.shape[0], max_nnz, average_nnz, (max_nnz-average_nnz)/average_nnz), file=stats_file)
+    print("{},{},{},{},{},{},{},{},{},{},{}, {}".format(data_name, input_a.shape[0], input_a.nnz, input_a.nnz/input_a.shape[0], 
+        output_c.nnz, output_c.nnz/output_c.shape[0], gt_cc, gt_cc/input_a.shape[0], max_nnz, average_nnz, (max_nnz-average_nnz)/average_nnz, np.max(flops_row)), file=stats_file)
 
     print("Completed")
