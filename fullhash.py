@@ -12,7 +12,7 @@ B_PTR_BUFFER_SIZE = 32*FACTOR
 
 CONCURRENT_C = 4
 
-PRINT_FREQ = 1
+PRINT_FREQ = 100
 MAXIMUM_SIZE = 131072
 N_BANKS = 32
 
@@ -149,7 +149,7 @@ class fullHash:
         for i in range(self.csr_m.shape[0]):
             if ht_size_array[i] <= MAXIMUM_SIZE:
                 self.on_chip_ht_size[i] = ht_size_array[i]
-                self.off_chip_ht_size[i] = 256
+                self.off_chip_ht_size[i] = 0
             else:
                 self.on_chip_ht_size[i] = MAXIMUM_SIZE
                 self.off_chip_ht_size[i] = next_power_of_2_single(bound_nnz[i] - MAXIMUM_SIZE)
@@ -178,17 +178,17 @@ class fullHash:
                     find_and_fill(self.stored_data[matrix_id][data_type], received_data_tuple, request)
             elif (request[2]>=PE_START_ID and request[2]<PE_START_ID + self.n_pes): # a read quest from the hashcore
                 self.n_outstanding -= 1
-                received_data_tuple = select_external_data(request, self.external_hashtable, self.START_TEMP)
+                received_data_tuple = select_external_data(request, self.external_hashtable, self.START_TEMP) #fast
                 self.hashsystem.receive(received_data_tuple, request[2]  - PE_START_ID)
             elif request[2] == PE_START_ID + 2*self.n_pes: # a read request from final writer to read from the externel/dram hash table
                 self.n_outstanding -= 1
                 self.read_external_hashtable.append(request[3])
         
         if valid == 1 and type == 1 and request[2] >= PE_START_ID and request[2]<PE_START_ID + self.n_pes:
-            #addr = request[3]
-            #write_data_tuple = request[5]
+            # addr = request[3]
+            # write_data_tuple = request[5]
             self.n_outstanding -= 1
-            table_idx =  (request[3] - self.START_TEMP)/HASH_ITEM_SIZE
+            # table_idx =  (request[3] - self.START_TEMP)/HASH_ITEM_SIZE
             write_external_data(request, self.external_hashtable, self.START_TEMP)
 
         if valid == 1 and type == 0 and request[2] == 999:
@@ -280,9 +280,9 @@ class fullHash:
                     self.nnz_outrow_list.pop(0)
                     self.nnz_processed = 0
                     self.nnz_loaded = 0
-                    self.overall_external_request += self.external_request.pop(0)
-                    self.external_request.append([])
-                    self.hashsystem.set_external_request(self.external_request)
+                    #self.overall_external_request += self.external_request.pop(0)
+                    #self.external_request.append([])
+                    #self.hashsystem.set_external_request(self.external_request)
                     self.shared_complete_list[self.a_row_id[0]] = 1
 
    
@@ -296,7 +296,8 @@ class fullHash:
         # configure it in the above declaration
         if self.n_outstanding < OUT_LIMIT:
 
-            #squeeze the entries and write back to DRAM
+            '''
+            #squeeze the external ht entries and write back to DRAM
             if len(self.write_start) > 0:
                 start_addr = self.write_start[0][0]
                 total_nnz = self.write_start[0][1]
@@ -318,16 +319,13 @@ class fullHash:
                         self.write_start.pop(0)
                         self.write_ptr = 0
                     
-                                     
-
-
-
+            # read dram HT request based on the hash core request
             if len(self.overall_external_request):
                 cur_read_addr = self.overall_external_request.pop(0)
                 curr_request = (1, 0, PE_START_ID + 2*self.n_pes,  self.START_TEMP + cur_read_addr*HASH_ITEM_SIZE, 1)
                 self.n_outstanding += 1
                 self.request_q.append(curr_request)
-                
+            '''    
 
             # write results back
             # only know where to write until PEs with smaller id finishes loading                               
@@ -357,8 +355,8 @@ class fullHash:
                 
 
                 # the full hash table was scanned  and self.external_ht_ptr >= self.hashsystem.off_chip_table_size
-                if self.ht_ptr >= self.hashsystem.on_chip_table_size  and len(self.out_buffer) == 0:
-                    self.write_start.append([int(self.START_C_INDICE_ADDR) + self.csr_out.indptr[curr_row_id]*8 + self.cur_c_row_nnz*8, c_row_nnz - self.cur_c_row_nnz])
+                if self.ht_ptr >= self.hashsystem.on_chip_table_size and self.external_ht_ptr >= self.hashsystem.off_chip_table_size and len(self.out_buffer) == 0:
+                    #self.write_start.append([int(self.START_C_INDICE_ADDR) + self.csr_out.indptr[curr_row_id]*8 + self.cur_c_row_nnz*8, c_row_nnz - self.cur_c_row_nnz])
                     self.a_row_id.pop(0)
                     self.fully_loaded = 0
                     self.processed = 0                        
@@ -378,9 +376,10 @@ class fullHash:
                     self.hashsystem.set_table_size(self.on_chip_ht_size[self.rows_processed], self.off_chip_ht_size[self.rows_processed])
                     self.hashsystem.reset_hashtable()                    
                 
-                '''
+                
                 # scan the external hashtable and push valid entries to out_buffer
                 if len(self.out_buffer) < 128 and self.external_ht_ptr < self.hashsystem.off_chip_table_size:
+                    print(self.hashsystem.off_chip_table_size)
                     if self.external_ht_ptr + 8 <= self.hashsystem.off_chip_table_size:
                         local_n = 8
                     else:
@@ -390,11 +389,11 @@ class fullHash:
                     self.external_ht_ptr += local_n
                     self.n_outstanding += 1
                     self.request_q.append(external_request)
-                '''
+                
 
                 # scan the hashtable and push valid entries to out_buffer
-                if len(self.out_buffer) < 32 and self.ht_ptr < self.hashsystem.on_chip_table_size: #col_idx, val is 8B, so a block should have 8 pairs
-                    n_available_slot = 32 - len(self.out_buffer)
+                if len(self.out_buffer) < 128 and self.ht_ptr < self.hashsystem.on_chip_table_size: #col_idx, val is 8B, so a block should have 8 pairs
+                    n_available_slot = 128 - len(self.out_buffer)
                     if self.ht_ptr + 16 <= self.hashsystem.on_chip_table_size:
                         pop_length = 16  
                     else:

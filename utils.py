@@ -54,7 +54,7 @@ def select_data(request, csr_ins):
         load_ptr = 0
         first_v = [csr_ins.indptr[int(addr/4)]]
         second_v = [csr_ins.indptr[int(addr/4)+1] - csr_ins.indptr[int(addr/4)]]
-        combined_v = np.column_stack((first_v, second_v)).tolist()
+        combined_v =  [[first_v[0], second_v[0]]]   #np.column_stack((first_v, second_v)).tolist()
     else:
         #load a data block (8 pairs at most)
         load_ptr = 1
@@ -85,10 +85,15 @@ def find_and_fill(store_list, loaded_blk, request=None):
     addr_n = loaded_blk[3]
     total_length = len(loaded_blk[2])
 
-    store_np = np.array(store_list)
+    # store_np = np.array(store_list)
     #it could be that request with same addr exists, so fill the early requestíí
-    return_indices = np.where( (store_np[:, 2]==addr_n) & (store_np[:, 0]==-1))
-    first_index = return_indices[0][0]
+    # return_indices = np.where( (store_np[:, 2]==addr_n) & (store_np[:, 0]==-1))
+    return_indices = 0
+    for i in range(len(store_list)):
+        if store_list[i][2] ==  addr_n and store_list[i][0] == -1:
+            return_indices = i
+            break
+    first_index = return_indices #return_indices[0][0]
     #temp = (np.array(store_list)[:, 2]).tolist()
     #first_index = temp.index(addr_n)
     for i in range(total_length):

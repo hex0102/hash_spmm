@@ -75,7 +75,7 @@ class HashCore:
                         self.done = 1
                         nnz_processed_h = 1
                         self.oc_probing_counter = 0
-                        self.debug_counter[2].append([col_idx, self.hash_addr])
+                        #self.debug_counter[2].append([col_idx, self.hash_addr])
                     elif fetch_dirty == 1:
                         req_valid = 1
                         req_type = 0
@@ -90,7 +90,7 @@ class HashCore:
                     self.done = 1
                     nnz_processed_h = 1
                     self.oc_probing_counter = 0
-                    self.debug_counter[2].append([col_idx, self.hash_addr])
+                    #self.debug_counter[2].append([col_idx, self.hash_addr])
                 else:
                     if self.oc_probing_counter < PROB_LENGTH:
                         self.hash_addr = (self.hash_addr + 1) & (self.allocated_table_size - 1)
@@ -100,8 +100,22 @@ class HashCore:
                         self.oc_probing_counter += 1
                     else:
                         #print(col_idx)
-                        self.pe_mode = 2 # change to mode 2 and access data off-chip
-                        self.oc_probing_counter = 0
+                        if self.offchip_table_size!=0:
+                            self.pe_mode = 2 # change to mode 2 and access data off-chip
+                            self.oc_probing_counter = 0
+                        elif self.oc_probing_counter == PROB_LENGTH:
+                            self.hash_addr = self.allocated_table_size
+                            req_valid = 1
+                            req_type = 0
+                            req_addr = self.hash_addr
+                            self.oc_probing_counter += 1
+                        else:
+                            self.hash_addr =  self.hash_addr + 1 
+                            req_valid = 1
+                            req_type = 0
+                            req_addr = self.hash_addr
+                            self.oc_probing_counter += 1
+
                 self.fetched_data[0] = -1
                 self.fetch_dest = 0    
         # process a new input
@@ -115,7 +129,7 @@ class HashCore:
                 self.input_data[0] = 0
                 self.fetch_dest = 0
                 self.write_complete = 0
-                self.debug_counter[1].append(col_idx)
+                #self.debug_counter[1].append(col_idx)
         elif self.pe_mode == 2: #
             self.pe_mode = 3
             self.hash_addr = hash_index(col_idx, 0, self.offchip_table_size)
@@ -137,8 +151,8 @@ class HashCore:
                     self.done = 1
                     nnz_processed_h = 1
                     self.oc_probing_counter = 0
-                    self.debug_counter[3].append(col_idx)
-                    self.external_request[-1].append(self.hash_addr)
+                    #self.debug_counter[3].append(col_idx)
+                    #self.external_request[-1].append(self.hash_addr)
                 elif fetch_idx == col_idx:
                     fetch_val += val
                     req_valid = 1
@@ -148,7 +162,7 @@ class HashCore:
                     self.done = 1
                     nnz_processed_h = 1
                     self.oc_probing_counter = 0
-                    self.debug_counter[3].append(col_idx)
+                    #self.debug_counter[3].append(col_idx)
                 else:
                     self.hash_addr = (self.hash_addr + 1) & (self.offchip_table_size - 1)
                     req_valid = 1

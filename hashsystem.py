@@ -48,14 +48,14 @@ class HashSystem:
 
 
     def reset_hashtable(self):
-        self.hashtable[:, 0] = -1
-        self.hashtable[:, 1] = 0
-        self.hashtable[:, 2] = 0
-        self.hashtable[:, 3] = 0
-        self.external_hashtable[:, 0] = -1
-        self.external_hashtable[:, 1] = 0
-        self.external_hashtable[:, 2] = 0
-        self.external_hashtable[:, 3] = 0        
+        self.hashtable[:2*self.on_chip_table_size , 0] = -1
+        self.hashtable[:2*self.on_chip_table_size , 1] = 0
+        self.hashtable[:2*self.on_chip_table_size , 2] = 0
+        self.hashtable[:2*self.on_chip_table_size , 3] = 0
+        self.external_hashtable[:2*self.off_chip_table_size, 0] = -1
+        self.external_hashtable[:2*self.off_chip_table_size, 1] = 0
+        self.external_hashtable[:2*self.off_chip_table_size, 2] = 0
+        self.external_hashtable[:2*self.off_chip_table_size, 3] = 0        
 
     def receive(self, received_data_tuple, pe_id):
         self.hashcore_array[pe_id].receive(None, [1, received_data_tuple[0], received_data_tuple[1], received_data_tuple[2], received_data_tuple[3]])

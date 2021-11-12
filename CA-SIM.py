@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import matplotlib as mpl
 from scipy import sparse
-from time import time
+import time
 import math
 from random import randint
 import random
@@ -193,6 +193,7 @@ def start_run_full_hash(csr_ins):
     hash_sys = fullHash(n_loaders, n_pes, assigned_rows, csr_ins, csr_out, shared_complete_list, shared_status_table)
     
     print("#start executing...")
+    start = time.time()
     clk = 0    
     while(1):
         #gather returned request from all memory channels
@@ -223,6 +224,8 @@ def start_run_full_hash(csr_ins):
         if sum(shared_status_table) == 1:
             print("total request handled: {}".format(main_memory.n_request))
             print("The overall execution time is: "+str(clk)+" cycles.")
+            end = time.time()
+            print("simulation takes {} seconds".format(end - start))
             return clk
             #break
         clk += 1 #increment the clk counter
